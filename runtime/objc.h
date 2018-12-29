@@ -38,9 +38,18 @@
 typedef struct objc_class *Class;
 
 /// Represents an instance of a class.
+/// 表示的是类的实例的结构体
 struct objc_object {
+    // 这个结构体只有一个isa,即指向其类的isa指针，这样当我们响一个OC对象发送消息的时候，运行库会根据实例对象的isa指针找到这个实例对象的所属类,Runtimeh库会在类的方法列表及父类的方法列表中去寻找与消息对应的selector指向的方法，找到后即运行这个方法
     Class isa  OBJC_ISA_AVAILABILITY;
 };
+/**
+ 当创建一个特定类的实例对象时，分配的内存包含一个objc_object数据结构，然后是类的实例变量的数据。NSObject类的alloc/allocWithZone：方法使用函数class_createInstance来创建objc_object数据结构
+ */
+
+/**
+ 在OC中最常见的id,它只是一个objc_object结构类型的指针。它的存在可以让我们实现类似于C++中d泛型的一些操作。该类型的对象可以转换为任何一种对象，有点类似C语言中的void*指针类型的作用
+ */
 
 /// A pointer to an instance of a class.
 typedef struct objc_object *id;

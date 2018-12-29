@@ -35,6 +35,27 @@
 #include <sys/types.h>
 #endif
 
+#pragma mark - 类与对象操作函数
+/**
+ runtime提供了大量的函数来操作类与对象,类的操作方法大多是以class_为前缀的，而对象的操作方法大部分是以objc_或object_ 为前缀。
+ 
+ 1, 类名(name): class_getName（获取类的名字） -- 如果传入的cls为nil，则返回一个字字符串
+ 
+ 
+ 
+ 
+ */
+
+#pragma mark - 元类(Meta-Class)
+/**
+ 1,所有的类自身也是一个对象，我们可以想这个对象发送消息(即调用类方法)
+ 即然是一个对象，那么他也是一个objc_object指针，它包含一个指向其类的一个isa指针
+ 2, meta-class是一个类对象的类
+ 当我们向一个对象发消息时，runtime会在这个对象所属的这个类的方法列表中查找方法，而向一个类发送消息时，会在这个meta-class的方法列表中查找
+ meta-class之所以重要，是因为它存储着一个类的所有类方法，每个类都会有一个单独的meta-class,因为每个类的类方法基本不可能完全相同
+ 3, meta-class其实也是一个类.也可以向它发送一个消息，它的isa都是统一指向根元类(Root meta-class)，即任何NSObject继承体系下的meta-class都使用NSObject的meta-class作为自己的所属类，而基类meta-class的isa指针是指向它自己。它的super-class指向的是根类(NSObject)。这样就形成了一个完美的闭环
+ 所以: 对于NSObject继承体系来说，其实例方法对体系中所有的实例，类，和meta-class都是有效的，而类方法对于体系内的所有类和meta-class都是有效的
+ */
 
 /* Types */
 
@@ -52,17 +73,22 @@ typedef struct objc_category *Category;
 /// An opaque type that represents an Objective-C declared property.
 typedef struct objc_property *objc_property_t;
 
+/// ⚠️注意⚠️: objc_object是表示一个类实例的结构体(定义在`objc.h`中)
 struct objc_class {
+    // 在OC中，所有的类自身也是一个对象，这个对象的Class的isa指针，指向的是它的metaClass(元类)
     Class isa  OBJC_ISA_AVAILABILITY;
 
 #if !__OBJC2__
+    // super_class: 指向该类的父类。如果已经是最顶层的根类(NSObject/NSProxy),根类的superClass则只想NULL
     Class super_class                                        OBJC2_UNAVAILABLE;
     const char *name                                         OBJC2_UNAVAILABLE;
+    // version: 提供类的版本信息，这对于对象的序列化非常有用，它可是让我们识别出不同类定义版本中实例变量布局的改变
     long version                                             OBJC2_UNAVAILABLE;
     long info                                                OBJC2_UNAVAILABLE;
     long instance_size                                       OBJC2_UNAVAILABLE;
     struct objc_ivar_list *ivars                             OBJC2_UNAVAILABLE;
     struct objc_method_list **methodLists                    OBJC2_UNAVAILABLE;
+    // cache: 用户缓存最近使用的方法。 一个接收者对象收到一个消息时，他会根据isa指针去查找能够响应这个消息的对象。在实际使用这，这个对象只有一部分方式是常用的，很多方法恰是很少用或者直接根本用不上，这种情况喜爱，如果每次消息来时，都需要在method_list中遍历一边，性能势必很差，这个时候，cache就派上用场了的，在我们每次调用过一个方法后，这个方法就会被缓存到cache列表中，下次调用的时候runtime就会优先去cache中查找，如果cache没有，才去method_list中查找方法，这样对于那些经常用到的方法的调用，就提高了调用的效率
     struct objc_cache *cache                                 OBJC2_UNAVAILABLE;
     struct objc_protocol_list *protocols                     OBJC2_UNAVAILABLE;
 #endif
@@ -392,6 +418,7 @@ OBJC_EXPORT Class *objc_copyClassList(unsigned int *outCount)
  * 
  * @return The name of the class, or the empty string if \e cls is \c Nil.
  */
+// 获取类的类名 -- 如果 cls 为Nil,则返回一个字字符串
 OBJC_EXPORT const char *class_getName(Class cls) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
@@ -403,6 +430,7 @@ OBJC_EXPORT const char *class_getName(Class cls)
  * @return \c YES if \e cls is a metaclass, \c NO if \e cls is a non-meta class, 
  *  \c NO if \e cls is \c Nil.
  */
+// 判断给定的Class是否是一个元类 -- 如果cls为元类，则返回YES,如果传入的是Nil,则返回NO
 OBJC_EXPORT BOOL class_isMetaClass(Class cls) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
@@ -416,6 +444,7 @@ OBJC_EXPORT BOOL class_isMetaClass(Class cls)
  *
  * @note You should usually use \c NSObject's \c superclass method instead of this function.
  */
+// 获取类的父类 -- 当cls传入为Nil或者cls为根类时，返回Nil.我们可以通过使用NSObject类的superclass方法来达到同样的目的
 OBJC_EXPORT Class class_getSuperclass(Class cls) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
@@ -445,6 +474,8 @@ OBJC_EXPORT Class class_setSuperclass(Class cls, Class newSuper)
  *
  * @see class_setVersion
  */
+// 版本(Version)
+// 获取版本号
 OBJC_EXPORT int class_getVersion(Class cls)
     OBJC_AVAILABLE(10.0, 2.0, 9.0, 1.0);
 
@@ -462,6 +493,7 @@ OBJC_EXPORT int class_getVersion(Class cls)
  * @note Classes derived from the Foundation framework \c NSObject class can set the class-definition
  *  version number using the \c setVersion: class method, which is implemented using the \c class_setVersion function.
  */
+// 设置版本号
 OBJC_EXPORT void class_setVersion(Class cls, int version)
     OBJC_AVAILABLE(10.0, 2.0, 9.0, 1.0);
 
@@ -472,9 +504,40 @@ OBJC_EXPORT void class_setVersion(Class cls, int version)
  * 
  * @return The size in bytes of instances of the class \e cls, or \c 0 if \e cls is \c Nil.
  */
+// 获取实例变量大小的函数
 OBJC_EXPORT size_t class_getInstanceSize(Class cls) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
+
+#pragma mark - 实例变量的成员变量及属性
+/**
+ 在objc_class中，所有的成员变量，属性的信息是放在链表ivars中的。ivars是一个数组，数组中的每个元素是指向Ivar(变量信息)的指针。runtime提供了丰富的函数来操作这一字段。
+ 
+ A: 成员变量操作函数
+
+ // 获取类中指定名称实例成员变量的信息
+ Ivar class_getInstanceVariable ( Class cls, const char *name );
+ // 获取类成员变量的信息
+ Ivar class_getClassVariable ( Class cls, const char *name );
+ // 添加成员变量
+ BOOL class_addIvar ( Class cls, const char *name, size_t size, uint8_t alignment, const char *types );
+ // 获取整个成员变量列表
+ Ivar * class_copyIvarList ( Class cls, unsigned int *outCount );
+ 
+ 
+ B: 成员变量操作函数
+ 
+ // 获取指定的属性
+ objc_property_t class_getProperty ( Class cls, const char *name );
+ // 获取属性列表
+ objc_property_t * class_copyPropertyList ( Class cls, unsigned int *outCount );
+ // 为类添加属性
+ BOOL class_addProperty ( Class cls, const char *name, const objc_property_attribute_t *attributes, unsigned int attributeCount );
+ // 替换类的属性
+ void class_replaceProperty ( Class cls, const char *name, const objc_property_attribute_t *attributes, unsigned int attributeCount );
+
+ 
+ */
 /** 
  * Returns the \c Ivar for a specified instance variable of a given class.
  * 
@@ -484,6 +547,7 @@ OBJC_EXPORT size_t class_getInstanceSize(Class cls)
  * @return A pointer to an \c Ivar data structure containing information about 
  *  the instance variable specified by \e name.
  */
+// 获取类中指定名称实例成员变量的信息。-- 它返回一个指向包含name指定的成员变量的objc_ivar结构体的指针(Ivar)
 OBJC_EXPORT Ivar class_getInstanceVariable(Class cls, const char *name)
     OBJC_AVAILABLE(10.0, 2.0, 9.0, 1.0);
 
@@ -495,6 +559,7 @@ OBJC_EXPORT Ivar class_getInstanceVariable(Class cls, const char *name)
  * 
  * @return A pointer to an \c Ivar data structure containing information about the class variable specified by \e name.
  */
+// 获取类成员变量的信息 -- 目前没有找到关于Objctive-C中类变量的信息，一般认为Objective-C不支持类变量，注意⚠️：返回的列表不包含父类的成员变量和属性
 OBJC_EXPORT Ivar class_getClassVariable(Class cls, const char *name) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
@@ -511,6 +576,7 @@ OBJC_EXPORT Ivar class_getClassVariable(Class cls, const char *name)
  * 
  *  If the class declares no instance variables, or cls is Nil, NULL is returned and *outCount is 0.
  */
+// 获取整个成员变量列表 -- 它返回一个指向成员变量信息的数组，数组中每个元素是指向该成员变量信息的objc_ivar结构体的指针。这个数组不包含在父类中声明的变量。outCount指针返回数据的的大小。需要⚠️注意⚠️的是我们必须使用free()来释放这个数组
 OBJC_EXPORT Ivar *class_copyIvarList(Class cls, unsigned int *outCount) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
@@ -526,6 +592,7 @@ OBJC_EXPORT Ivar *class_copyIvarList(Class cls, unsigned int *outCount)
  *
  * @note This function searches superclasses for implementations, whereas \c class_copyMethodList does not.
  */
+
 OBJC_EXPORT Method class_getInstanceMethod(Class cls, SEL name)
     OBJC_AVAILABLE(10.0, 2.0, 9.0, 1.0);
 
@@ -560,6 +627,7 @@ OBJC_EXPORT Method class_getClassMethod(Class cls, SEL name)
  *  an actual method implementation. For example, if instances of the class do not respond to
  *  the selector, the function pointer returned will be part of the runtime's message forwarding machinery.
  */
+// class_getMethodImplementation： 该函数在向类实例发送消息时会被调用，并返回一个指向方法实现函数的指针。这个函数会比method_getImplementation(class_getInstanceMethod(cls, name))更快，返回的函数指针可能是一个指向runtime内部的函数，而不一定是方法的实际实现。例如，。如果类实例无法响应selector，则返回的函数指针将是运行消息转发机制的一部分
 OBJC_EXPORT IMP class_getMethodImplementation(Class cls, SEL name) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
@@ -588,6 +656,7 @@ OBJC_EXPORT IMP class_getMethodImplementation_stret(Class cls, SEL name)
  * @note You should usually use \c NSObject's \c respondsToSelector: or \c instancesRespondToSelector: 
  *  methods instead of this function.
  */
+// class_respondsToSelector: 我们通常使用NSObject类的respondsToSelector:或者instancesRespondToSelector:方法来到达相同目的
 OBJC_EXPORT BOOL class_respondsToSelector(Class cls, SEL sel) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
@@ -608,8 +677,20 @@ OBJC_EXPORT BOOL class_respondsToSelector(Class cls, SEL sel)
  * @note To get the implementations of methods that may be implemented by superclasses, 
  *  use \c class_getInstanceMethod or \c class_getClassMethod.
  */
+// class_copyMethodList函数，返回包含所有实例方法的数组，如果需要获取类方法，则可以使用class_copyMethodList(object_getClass(cls), &count)(一个类的实例方法是定义在元类里面)该列表不包含父类实现的方法。outCount参数返回的个数，在获取到列表后，我们需要使用free()来释放它
 OBJC_EXPORT Method *class_copyMethodList(Class cls, unsigned int *outCount) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
+
+#pragma mark - 协议(objc_protocol_list)
+/**
+ 协议相关的操作会包含一下函数:
+ // 添加协议
+ BOOL class_addProtocol ( Class cls, Protocol *protocol );
+ // 返回类是否实现指定的协议
+ BOOL class_conformsToProtocol ( Class cls, Protocol *protocol );
+ // 返回类实现的协议列表
+ Protocol * class_copyProtocolList ( Class cls, unsigned int *outCount );
+ */
 
 /** 
  * Returns a Boolean value that indicates whether a class conforms to a given protocol.
@@ -621,6 +702,7 @@ OBJC_EXPORT Method *class_copyMethodList(Class cls, unsigned int *outCount)
  *
  * @note You should usually use NSObject's conformsToProtocol: method instead of this function.
  */
+// class_conformsToProtocol: 函数可以使用NSObject类的conformsToProtocol: 方法来替代，返回类是否实现指定的协议
 OBJC_EXPORT BOOL class_conformsToProtocol(Class cls, Protocol *protocol) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
@@ -637,6 +719,7 @@ OBJC_EXPORT BOOL class_conformsToProtocol(Class cls, Protocol *protocol)
  * 
  *  If cls adopts no protocols, or cls is Nil, returns NULL and *outCount is 0.
  */
+// class_copyProtocolList: 函数返回的是一个数组，在使用后我们需要使用free()手动释放
 OBJC_EXPORT Protocol * __unsafe_unretained *class_copyProtocolList(Class cls, unsigned int *outCount)
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
@@ -650,6 +733,7 @@ OBJC_EXPORT Protocol * __unsafe_unretained *class_copyProtocolList(Class cls, un
  *  \c NULL if the class does not declare a property with that name, 
  *  or \c NULL if \e cls is \c Nil.
  */
+// 这个方法也是针对ivars来操作，不过只操作那些是属性的值，
 OBJC_EXPORT objc_property_t class_getProperty(Class cls, const char *name)
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
@@ -676,6 +760,7 @@ OBJC_EXPORT objc_property_t *class_copyPropertyList(Class cls, unsigned int *out
  * 
  * @return A description of the \c Ivar layout for \e cls.
  */
+// 内存布局 --- 不需要主动调用
 OBJC_EXPORT const uint8_t *class_getIvarLayout(Class cls)
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
@@ -688,6 +773,27 @@ OBJC_EXPORT const uint8_t *class_getIvarLayout(Class cls)
  */
 OBJC_EXPORT const uint8_t *class_getWeakIvarLayout(Class cls)
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
+
+
+#pragma mark - 方法Method
+/**
+ 方法操作有以下函数:
+ // 添加方法
+ BOOL class_addMethod ( Class cls, SEL name, IMP imp, const char *types );
+ // 获取实例方法
+ Method class_getInstanceMethod ( Class cls, SEL name );
+ // 获取类方法
+ Method class_getClassMethod ( Class cls, SEL name );
+ // 获取所有方法的数组
+ Method * class_copyMethodList ( Class cls, unsigned int *outCount );
+ // 替代方法的实现
+ IMP class_replaceMethod ( Class cls, SEL name, IMP imp, const char *types );
+ // 返回方法的具体实现
+ IMP class_getMethodImplementation ( Class cls, SEL name );
+ IMP class_getMethodImplementation_stret ( Class cls, SEL name );
+ // 类实例是否响应指定的selector
+ BOOL class_respondsToSelector ( Class cls, SEL sel );
+ */
 
 /** 
  * Adds a new method to a class with a given name and implementation.
@@ -703,6 +809,18 @@ OBJC_EXPORT const uint8_t *class_getWeakIvarLayout(Class cls)
  * @note class_addMethod will add an override of a superclass's implementation, 
  *  but will not replace an existing implementation in this class. 
  *  To change an existing implementation, use method_setImplementation.
+ */
+/** class_addMethod -- 的实现⚠️会覆盖父类的方法实现，但不会取代本类中已存在的实现⚠️，如果本类中包含一个同名的实现，则函数会赶回NO,如果要修改已存在的实现，可以使用method_setImplementation。一个ObjecObjecitive-C方法是一个简单的C函数，它至少包含两个参数self和_cmd，所以，我们的实现函数(IMP参数指向的函数)至少需要两个参数,如:
+ void myMethodIMP(id self, SEL  _cmd) {
+ // implementation
+ }
+ ⚠️与成员变量不同的是，我们可以为类动态添加方法，不管这个类是不是已存在
+ types: 是一个描述传递给方法的参数类型的字符数组
+ 
+ */
+
+/**
+ class_getInstanceMethod, class_getClassMethod函数，与class_copyMethodList不同的是，这两个函数都会去搜索父类的实现
  */
 OBJC_EXPORT BOOL class_addMethod(Class cls, SEL name, IMP imp, 
                                  const char *types) 
@@ -726,6 +844,7 @@ OBJC_EXPORT BOOL class_addMethod(Class cls, SEL name, IMP imp,
  *  - If the method identified by \e name does exist, its \c IMP is replaced as if \c method_setImplementation were called.
  *    The type encoding specified by \e types is ignored.
  */
+// 该函数的行为分为两种，如果类中不存在name指定的方法，则类似于class_addMethod函数一样会添加方法;如果类中已经存在name指定的方法，则类似于method_setImplementation一样替代原来的方法实现
 OBJC_EXPORT IMP class_replaceMethod(Class cls, SEL name, IMP imp, 
                                     const char *types) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
@@ -743,6 +862,7 @@ OBJC_EXPORT IMP class_replaceMethod(Class cls, SEL name, IMP imp,
  *       variable depends on the ivar's type and the machine architecture. 
  *       For variables of any pointer type, pass log2(sizeof(pointer_type)).
  */
+// 添加成员变量 --- Objective-C不支持往已经存在的类中添加实例变量，因此不管是系统库提供的类，还是我们自定义的类，都无法动态的添加成员变量。但是我们通过运行时来创建一个类的话，可以使用class_addIvar函数来添加成员变量，不过要⚠️注意⚠️: 这个函数只能在objc_allocateClassPair和objc_registerClassPair之间调用。另外这个类也不能是元类。成员变量得按最小对其量是1<<alignment。这取决于ivar的类型和机器的架构。如果变量的类型是指针类型，则传递log2(sizeof(pointer_type))。
 OBJC_EXPORT BOOL class_addIvar(Class cls, const char *name, size_t size, 
                                uint8_t alignment, const char *types) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
@@ -1757,6 +1877,16 @@ typedef struct objc_cache *Cache                             OBJC2_UNAVAILABLE;
 #else
 #define CACHE_HASH(sel, mask) (((unsigned int)((uintptr_t)(sel)>>3)) & (mask))
 #endif
+
+#pragma mark - objc_cache的结构体定义 - Cache
+
+/**
+ 1, mask: 一个整数。指定分配的缓存bucket的总数。在方法查找过程中，OC Runtime使用这个字段来确定开始线性查找数组的索引位置。指向方法selector的指针与该字段做一个AND位操作(index=（mask&selector))。这可以作为一个简单的hash散列算法
+ 2, occupied: 一个整数。指定实际占用的缓存bucket的总数
+ 3, bucket: 指向method数据结构指针的数组。这个数组可能包含不超过mask+1个元素。需要注意的是，指针可能是NULL，表示这个缓存bucket没有被占用，另外被占用的bucket 可能是不连续的，这个数组可能会随着时间而增长
+ */
+
+
 struct objc_cache {
     unsigned int mask /* total = mask + 1 */                 OBJC2_UNAVAILABLE;
     unsigned int occupied                                    OBJC2_UNAVAILABLE;
