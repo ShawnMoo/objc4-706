@@ -1005,6 +1005,23 @@ OBJC_EXPORT void *objc_destructInstance(id obj)
  * @note Instance methods and instance variables should be added to the class itself. 
  *  Class methods should be added to the metaclass.
  */
+#pragma mark - 动态创建类和对象
+/**
+ runtime可以在运行时创建类和对象
+ 动态创建类:
+ 
+ // 创建一个新类和元类
+ Class objc_allocateClassPair ( Class superclass, const char *name, size_t extraBytes );
+ // 销毁一个类及其相关联的类
+ void objc_disposeClassPair ( Class cls );
+ // 在应用中注册由objc_allocateClassPair创建的类
+ void objc_registerClassPair ( Class cls );
+
+ */
+
+// objc_allocateClassPair函数: 如果我们要创建一个根类，则superclass指定为Nil,extraBytes通常指定为0，该参数是分配给类和元类对象尾部的索引ivars的字节数
+// 为了创建一个新类，我们需要调用objc_allocateClassPair。然后使用诸如class_addMethod，class_addIvar等函数来为新建的类添加方法，实例变量和属性等。完成这些后我们需要调用objc_registerClassPair函数来注册类,之后这个新类就可以在程序中使用了
+// 实例方法和实例变量应该添加到类自身上，而类方法应该添加到类的元类上
 OBJC_EXPORT Class objc_allocateClassPair(Class superclass, const char *name, 
                                          size_t extraBytes) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
@@ -1033,6 +1050,7 @@ OBJC_EXPORT Class objc_duplicateClass(Class original, const char *name, size_t e
  * 
  * @warning Do not call if instances of this class or a subclass exist.
  */
+// objc_disposeClassPair函数用于销毁一个类，不过需要⚠️注意⚠️的是，如果程序中还存在类或者其子类的实例，则不能调用针对类调用该方法
 OBJC_EXPORT void objc_disposeClassPair(Class cls) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0);
 
